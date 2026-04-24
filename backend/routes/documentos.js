@@ -29,17 +29,26 @@ function limparCpf(cpf) {
 }
 
 /**
- * GET /api/documentos/:cpf?tipo=IR|BOLETO
+ * GET /api/documentos/:cpf?tipo=IR|BOLETO&ano=2024
  * Retorna a lista de documentos disponíveis para o CPF informado, filtrado pelo tipo.
+ * Para tipo IR, o parâmetro opcional "ano" filtra por ano específico.
  */
 router.get('/documentos/:cpf', (req, res) => {
   const cpfLimpo = limparCpf(req.params.cpf);
   const tipo = (req.query.tipo || '').toUpperCase();
+  const ano = req.query.ano ? parseInt(req.query.ano, 10) : null;
 
   if (!tipo || !['IR', 'BOLETO'].includes(tipo)) {
     return res.status(400).json({
       sucesso: false,
       mensagem: 'Parâmetro "tipo" inválido. Use IR ou BOLETO.',
+    });
+  }
+
+  if (ano !== null && (isNaN(ano) || ano < 1900 || ano > 9999)) {
+    return res.status(400).json({
+      sucesso: false,
+      mensagem: 'Parâmetro "ano" inválido. Informe um ano com 4 dígitos.',
     });
   }
 
@@ -52,13 +61,24 @@ router.get('/documentos/:cpf', (req, res) => {
     });
   }
 
-  const lista = registros[tipo];
+  let lista = registros[tipo];
 
   if (!lista || lista.length === 0) {
     return res.status(404).json({
       sucesso: false,
       mensagem: 'Documento não localizado.',
     });
+  }
+
+  if (tipo === 'IR' && ano !== null) {
+    lista = lista.filter((doc) => doc.ano === ano);
+
+    if (lista.length === 0) {
+      return res.status(404).json({
+        sucesso: false,
+        mensagem: `Documento não localizado para o ano ${ano}.`,
+      });
+    }
   }
 
   const documentos = lista.map((doc) => {
