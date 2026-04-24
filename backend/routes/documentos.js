@@ -45,7 +45,7 @@ router.get('/documentos/:cpf', (req, res) => {
     });
   }
 
-  if (ano !== null && (isNaN(ano) || ano < 1900 || ano > 9999)) {
+  if (ano !== null && (isNaN(ano) || ano < 1900 || ano > new Date().getFullYear() + 1)) {
     return res.status(400).json({
       sucesso: false,
       mensagem: 'Parâmetro "ano" inválido. Informe um ano com 4 dígitos.',
@@ -94,6 +94,7 @@ router.get('/documentos/:cpf', (req, res) => {
       nome: doc.arquivo,
       descricao,
       tipo,
+      ...(tipo === 'IR' ? { ano: doc.ano } : {}),
       url,
       expiraEm,
     };

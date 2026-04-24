@@ -60,6 +60,7 @@ describe('GET /api/documentos/:cpf', () => {
       expect(doc).toHaveProperty('descricao');
       expect(doc).toHaveProperty('url');
       expect(doc).toHaveProperty('expiraEm');
+      expect(doc).toHaveProperty('ano');
       expect(doc.tipo).toBe('IR');
       expect(doc.descricao).toMatch(/Informe de Rendimentos/);
     });
@@ -277,9 +278,19 @@ describe('GET /api/documentos/:cpf', () => {
       expect(res.body.mensagem).toMatch(/2000/);
     });
 
-    it('deve retornar 400 quando ano é inválido', async () => {
+    it('deve retornar 400 quando ano é inválido (não numérico)', async () => {
       const res = await request(app)
         .get(`/api/documentos/${CPF_VALIDO}?tipo=IR&ano=abc`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.sucesso).toBe(false);
+      expect(res.body.mensagem).toMatch(/ano/i);
+    });
+
+    it('deve retornar 400 quando ano está muito no futuro', async () => {
+      const anoFuturo = new Date().getFullYear() + 10;
+      const res = await request(app)
+        .get(`/api/documentos/${CPF_VALIDO}?tipo=IR&ano=${anoFuturo}`);
 
       expect(res.status).toBe(400);
       expect(res.body.sucesso).toBe(false);

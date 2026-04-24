@@ -22,16 +22,13 @@ function formatarCpf(cpf) {
 
 export default function ListaDocumentos({ colaborador, documentos, tipoDocumento, onNovaConsulta, onVoltar }) {
   const anosDisponiveis = tipoDocumento === 'IR'
-    ? [...new Set(documentos.map((doc) => {
-        const match = doc.descricao.match(/\d{4}/);
-        return match ? match[0] : null;
-      }).filter(Boolean))].sort((a, b) => b - a)
+    ? [...new Set(documentos.map((doc) => doc.ano).filter(Boolean))].sort((a, b) => b - a)
     : [];
 
   const [anoSelecionado, setAnoSelecionado] = useState('');
 
   const documentosFiltrados = tipoDocumento === 'IR' && anoSelecionado
-    ? documentos.filter((doc) => doc.descricao.includes(anoSelecionado))
+    ? documentos.filter((doc) => doc.ano === Number(anoSelecionado))
     : documentos;
 
   return (
