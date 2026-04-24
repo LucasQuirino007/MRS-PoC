@@ -1,0 +1,59 @@
+# ──────────────────────────────────────────────────────────
+# Node.js / npm
+# ──────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# ──────────────────────────────────────────────────────────
+# Variáveis de ambiente (nunca versionar segredos)
+# ──────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+
+# ──────────────────────────────────────────────────────────
+# Backend — logs e artefatos de runtime
+# ──────────────────────────────────────────────────────────
+backend/logs/
+backend/*.log
+
+# ──────────────────────────────────────────────────────────
+# Frontend — build Vite
+# ──────────────────────────────────────────────────────────
+frontend/dist/
+frontend/.vite/
+
+# ──────────────────────────────────────────────────────────
+# Cobertura de testes
+# ──────────────────────────────────────────────────────────
+coverage/
+.nyc_output/
+
+# ──────────────────────────────────────────────────────────
+# Editores e IDEs
+# ──────────────────────────────────────────────────────────
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.suo
+*.user
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ──────────────────────────────────────────────────────────
+# OS
+# ──────────────────────────────────────────────────────────
+Desktop.ini
+ehthumbs.db
