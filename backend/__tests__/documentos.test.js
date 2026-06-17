@@ -7,6 +7,8 @@ function criarApp(dadosMock) {
   jest.resetModules();
   if (dadosMock !== undefined) {
     jest.doMock('../data/documentos', () => dadosMock);
+  } else {
+    jest.unmock('../data/documentos');
   }
   const documentosRoute = require('../routes/documentos');
   const app = express();
@@ -16,8 +18,9 @@ function criarApp(dadosMock) {
 }
 
 // ─── Mock do uuid para tornar as asserções determinísticas ───────────────────
+let mockUuidCounter = 0;
 jest.mock('uuid', () => ({
-  v4: jest.fn(() => 'test-uuid-1234-5678-abcd'),
+  v4: jest.fn(() => `test-uuid-${String(++mockUuidCounter).padStart(4, '0')}`),
 }));
 
 // CPF presente nos dados mockados reais
@@ -57,6 +60,7 @@ describe('GET /api/documentos/:cpf', () => {
       expect(doc).toHaveProperty('descricao');
       expect(doc).toHaveProperty('url');
       expect(doc).toHaveProperty('expiraEm');
+      expect(doc).toHaveProperty('ano');
       expect(doc.tipo).toBe('IR');
       expect(doc.descricao).toMatch(/Informe de Rendimentos/);
     });
@@ -246,7 +250,72 @@ describe('GET /api/documentos/:cpf', () => {
     });
   });
 
-  // ── Formato e integridade da resposta ──────────────────────────────────────
+  // ── Filtro por ano (tipo IR) ────────────────────────────────────────────────
+
+  describe('Filtro por ano', () => {
+    let app;
+
+    beforeEach(() => {
+      app = criarApp();
+    });
+
+    it('deve retornar apenas o IR do ano informado', async () => {
+      const res = await request(app)
+        .get(`/api/documentos/${CPF_VALIDO}?tipo=IR&ano=2024`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.sucesso).toBe(true);
+      expect(res.body.documentos).toHaveLength(1);
+      expect(res.body.documentos[0].descricao).toContain('2024');
+    });
+
+    it('deve retornar 404 quando nenhum IR existe para o ano informado', async () => {
+      const res = await request(app)
+        .get(`/api/documentos/${CPF_VALIDO}?tipo=IR&ano=2000`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.sucesso).toBe(false);
+      expect(res.body.mensagem).toMatch(/2000/);
+    });
+
+    it('deve retornar 400 quando ano é inválido (não numérico)', async () => {
+      const res = await request(app)
+        .get(`/api/documentos/${CPF_VALIDO}?tipo=IR&ano=abc`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.sucesso).toBe(false);
+      expect(res.body.mensagem).toMatch(/ano/i);
+    });
+
+    it('deve retornar 400 quando ano está muito no futuro', async () => {
+      const anoFuturo = new Date().getFullYear() + 10;
+      const res = await request(app)
+        .get(`/api/documentos/${CPF_VALIDO}?tipo=IR&ano=${anoFuturo}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.sucesso).toBe(false);
+      expect(res.body.mensagem).toMatch(/ano/i);
+    });
+
+    it('deve ignorar filtro de ano para tipo BOLETO e retornar todos', async () => {
+      const res = await request(app)
+        .get(`/api/documentos/${CPF_VALIDO}?tipo=BOLETO&ano=2025`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.sucesso).toBe(true);
+      expect(res.body.documentos).toHaveLength(3);
+    });
+
+    it('deve retornar todos os IRs quando ano não é informado', async () => {
+      const res = await request(app)
+        .get(`/api/documentos/${CPF_VALIDO}?tipo=IR`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.documentos).toHaveLength(2);
+    });
+  });
+
+
 
   describe('Formato da resposta', () => {
     let app;

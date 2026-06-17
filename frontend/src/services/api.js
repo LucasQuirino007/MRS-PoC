@@ -16,9 +16,11 @@ export async function validarColaborador(dados) {
   return data;
 }
 
-export async function buscarDocumentos(cpf, tipo) {
+export async function buscarDocumentos(cpf, tipo, ano) {
   const cpfLimpo = cpf.replace(/\D/g, '');
-  const response = await fetch(`${API_BASE}/documentos/${cpfLimpo}?tipo=${tipo}`);
+  const params = new URLSearchParams({ tipo });
+  if (ano) params.set('ano', ano);
+  const response = await fetch(`${API_BASE}/documentos/${cpfLimpo}?${params}`);
   const data = await response.json();
 
   if (!response.ok) {

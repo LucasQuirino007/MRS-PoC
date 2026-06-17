@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 const LABELS = {
   IR: 'Informe de Rendimentos',
   BOLETO: 'Boletos do Plano de Saúde',
@@ -19,6 +21,16 @@ function formatarCpf(cpf) {
 }
 
 export default function ListaDocumentos({ colaborador, documentos, tipoDocumento, onNovaConsulta, onVoltar }) {
+  const anosDisponiveis = tipoDocumento === 'IR'
+    ? [...new Set(documentos.map((doc) => doc.ano).filter(Boolean))].sort((a, b) => b - a)
+    : [];
+
+  const [anoSelecionado, setAnoSelecionado] = useState('');
+
+  const documentosFiltrados = tipoDocumento === 'IR' && anoSelecionado
+    ? documentos.filter((doc) => doc.ano === Number(anoSelecionado))
+    : documentos;
+
   return (
     <div className="max-w-2xl mx-auto">
       <div className="mb-6 flex items-center justify-between">
@@ -49,12 +61,33 @@ export default function ListaDocumentos({ colaborador, documentos, tipoDocumento
         </span>
       </div>
 
+      {/* Filtro por ano — somente para IR */}
+      {tipoDocumento === 'IR' && anosDisponiveis.length > 0 && (
+        <div className="mb-4 flex items-center gap-3">
+          <label htmlFor="filtro-ano" className="text-sm font-medium text-slate-600 shrink-0">
+            Filtrar por ano:
+          </label>
+          <select
+            id="filtro-ano"
+            value={anoSelecionado}
+            onChange={(e) => setAnoSelecionado(e.target.value)}
+            className="px-3 py-2 rounded-lg border border-slate-300 text-slate-800 text-sm
+              focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+          >
+            <option value="">Todos os anos</option>
+            {anosDisponiveis.map((ano) => (
+              <option key={ano} value={ano}>{ano}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {/* Lista de documentos */}
       <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">
-        Documentos disponíveis ({documentos.length})
+        Documentos disponíveis ({documentosFiltrados.length})
       </h3>
 
-      {documentos.length === 0 ? (
+      {documentosFiltrados.length === 0 ? (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center">
           <p className="text-amber-700 font-medium">Documento não localizado.</p>
           <p className="text-amber-600 text-sm mt-1">
@@ -63,7 +96,7 @@ export default function ListaDocumentos({ colaborador, documentos, tipoDocumento
         </div>
       ) : (
         <ul className="space-y-3">
-          {documentos.map((doc) => (
+          {documentosFiltrados.map((doc) => (
             <li
               key={doc.id}
               className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm
