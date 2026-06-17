@@ -1,0 +1,378 @@
+openapi: 3.0.3
+
+info:
+  title: MRS PoC — API de Documentos do Colaborador
+  description: |
+    API REST do portal de consulta de documentos do colaborador MRS.
+
+    Permite **validar a identidade** do colaborador e **consultar/enviar documentos**
+    (Informes de Rendimentos e Boletos do Plano de Saúde) com links temporários
+    que simulam SAS Tokens do Azure Blob Storage.
+
+    > ⚠️ Esta é uma PoC (Proof of Concept). Os dados são mockados e os tokens SAS são simulados.
+  version: 1.0.0
+  contact:
+    name: Time MRS PoC
+
+servers:
+  - url: http://localhost:3001/api
+    description: Servidor de desenvolvimento local
+
+tags:
+  - name: Autenticação
+    description: Validação de identidade do colaborador
+  - name: Documentos
+    description: Consulta e upload de documentos
+
+paths:
+  /validar-colaborador:
+    post:
+      tags:
+        - Autenticação
+      summary: Valida a identidade do colaborador
+      description: |
+        Verifica se os dados informados (matrícula, CPF, data de nascimento e data de admissão)
+        correspondem a um colaborador cadastrado na base mockada.
+      operationId: validarColaborador
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidarColaboradorRequest'
+            example:
+              matricula: "10001"
+              cpf: "123.456.789-00"
+              dataNascimento: "1985-03-15"
+              dataAdmissao: "2010-06-01"
+      responses:
+        '200':
+          description: Colaborador localizado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidarColaboradorResponse'
+              example:
+                sucesso: true
+                colaborador:
+                  nome: "João Silva"
+                  cpf: "12345678900"
+                  matricula: "10001"
+        '400':
+          description: Campos obrigatórios ausentes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+              example:
+                sucesso: false
+                mensagem: "Todos os campos são obrigatórios."
+        '404':
+          description: Colaborador não localizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+              example:
+                sucesso: false
+                mensagem: "Pessoa não localizada. Verifique os dados informados."
+
+  /documentos/{cpf}:
+    get:
+      tags:
+        - Documentos
+      summary: Lista documentos disponíveis para um CPF
+      description: |
+        Retorna a lista de documentos disponíveis para o CPF informado, filtrado pelo tipo.
+        Cada documento inclui uma URL com SAS token simulado válido por **1 hora**.
+
+        O CPF pode ser informado com ou sem máscara (pontos e traço são removidos automaticamente).
+      operationId: listarDocumentos
+      parameters:
+        - name: cpf
+          in: path
+          required: true
+          description: CPF do colaborador (com ou sem máscara)
+          schema:
+            type: string
+          examples:
+            semMascara:
+              summary: CPF sem máscara
+              value: "12345678900"
+            comMascara:
+              summary: CPF com máscara
+              value: "123.456.789-00"
+        - name: tipo
+          in: query
+          required: true
+          description: Tipo do documento
+          schema:
+            type: string
+            enum: [IR, BOLETO]
+          example: IR
+      responses:
+        '200':
+          description: Lista de documentos retornada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListaDocumentosResponse'
+              examples:
+                ir:
+                  summary: Informes de Rendimentos
+                  value:
+                    sucesso: true
+                    documentos:
+                      - id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                        nome: "INF_2024_12345678900.pdf"
+                        descricao: "Informe de Rendimentos 2024"
+                        tipo: "IR"
+                        url: "https://mrsstoragepoc.blob.core.windows.net/documentos-colaboradores/IR/2024/INF_2024_12345678900.pdf?sv=2024-08-04&se=2026-04-24T15%3A00%3A00Z&sp=r&sig=abc123"
+                        expiraEm: "2026-04-24T15:00:00.000Z"
+                boleto:
+                  summary: Boletos do Plano de Saúde
+                  value:
+                    sucesso: true
+                    documentos:
+                      - id: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+                        nome: "BLT_01_2025_12345678900.pdf"
+                        descricao: "Boleto Plano de Saúde — 01/2025"
+                        tipo: "BOLETO"
+                        url: "https://mrsstoragepoc.blob.core.windows.net/documentos-colaboradores/BOLETOS/2025/01/BLT_01_2025_12345678900.pdf?sv=2024-08-04&se=2026-04-24T15%3A00%3A00Z&sp=r&sig=def456"
+                        expiraEm: "2026-04-24T15:00:00.000Z"
+        '400':
+          description: Tipo inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+              example:
+                sucesso: false
+                mensagem: 'Parâmetro "tipo" inválido. Use IR ou BOLETO.'
+        '404':
+          description: Documentos não localizados
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+              examples:
+                cpfNaoEncontrado:
+                  summary: CPF não existe na base
+                  value:
+                    sucesso: false
+                    mensagem: "Documento não localizado para o CPF informado."
+                semDocumentos:
+                  summary: CPF existe mas não há documentos do tipo
+                  value:
+                    sucesso: false
+                    mensagem: "Documento não localizado."
+
+  /documentos/upload:
+    post:
+      tags:
+        - Documentos
+      summary: Simula o upload de um novo boleto
+      description: |
+        Simula o upload de um novo boleto do plano de saúde para o colaborador informado.
+
+        O arquivo é registrado em memória (não persiste em disco entre reinicializações do servidor)
+        e uma URL com SAS token simulado é retornada com validade de **1 hora**.
+
+        **Nome do arquivo gerado:** `BLT_MM_AAAA_CPF.pdf`
+        > Exemplo: `BLT_03_2025_12345678900.pdf`
+
+        O CPF aceita máscara (pontos e traço são removidos automaticamente).
+      operationId: uploadBoleto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadBoletoRequest'
+            examples:
+              comMascara:
+                summary: CPF com máscara
+                value:
+                  cpf: "123.456.789-00"
+                  mes: "03"
+                  ano: "2025"
+              semMascara:
+                summary: CPF sem máscara
+                value:
+                  cpf: "12345678900"
+                  mes: 3
+                  ano: 2025
+      responses:
+        '201':
+          description: Boleto enviado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadBoletoResponse'
+              example:
+                sucesso: true
+                mensagem: "Boleto enviado com sucesso."
+                documento:
+                  id: "d4e5f6a7-b8c9-0123-def0-234567890123"
+                  nome: "BLT_03_2025_12345678900.pdf"
+                  descricao: "Boleto Plano de Saúde — 03/2025"
+                  tipo: "BOLETO"
+                  url: "https://mrsstoragepoc.blob.core.windows.net/documentos-colaboradores/BOLETOS/2025/03/BLT_03_2025_12345678900.pdf?sv=2024-08-04&se=2026-04-24T15%3A00%3A00Z&sp=r&sig=ghi789"
+                  expiraEm: "2026-04-24T15:00:00.000Z"
+        '400':
+          description: Dados inválidos ou ausentes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+              examples:
+                camposAusentes:
+                  summary: Campos obrigatórios ausentes
+                  value:
+                    sucesso: false
+                    mensagem: 'Os campos "cpf", "mes" e "ano" são obrigatórios.'
+                cpfInvalido:
+                  summary: CPF com dígitos incorretos
+                  value:
+                    sucesso: false
+                    mensagem: "CPF inválido. Informe um CPF com 11 dígitos numéricos."
+                mesInvalido:
+                  summary: Mês fora do intervalo 01-12
+                  value:
+                    sucesso: false
+                    mensagem: "Mês inválido. Informe um valor entre 01 e 12."
+                anoInvalido:
+                  summary: Ano sem 4 dígitos
+                  value:
+                    sucesso: false
+                    mensagem: "Ano inválido. Informe um ano com 4 dígitos."
+
+components:
+  schemas:
+    ValidarColaboradorRequest:
+      type: object
+      required: [matricula, cpf, dataNascimento, dataAdmissao]
+      properties:
+        matricula:
+          type: string
+          description: Matrícula do colaborador
+          example: "10001"
+        cpf:
+          type: string
+          description: CPF do colaborador (com ou sem máscara)
+          example: "123.456.789-00"
+        dataNascimento:
+          type: string
+          format: date
+          description: Data de nascimento no formato YYYY-MM-DD
+          example: "1985-03-15"
+        dataAdmissao:
+          type: string
+          format: date
+          description: Data de admissão no formato YYYY-MM-DD
+          example: "2010-06-01"
+
+    ValidarColaboradorResponse:
+      type: object
+      properties:
+        sucesso:
+          type: boolean
+          example: true
+        colaborador:
+          type: object
+          properties:
+            nome:
+              type: string
+              example: "João Silva"
+            cpf:
+              type: string
+              description: CPF sem máscara
+              example: "12345678900"
+            matricula:
+              type: string
+              example: "10001"
+
+    Documento:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identificador único do documento (UUID v4)
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        nome:
+          type: string
+          description: Nome do arquivo
+          example: "INF_2024_12345678900.pdf"
+        descricao:
+          type: string
+          description: Descrição legível do documento
+          example: "Informe de Rendimentos 2024"
+        tipo:
+          type: string
+          enum: [IR, BOLETO]
+          example: "IR"
+        url:
+          type: string
+          format: uri
+          description: URL com SAS token simulado (válida por 1 hora)
+          example: "https://mrsstoragepoc.blob.core.windows.net/documentos-colaboradores/IR/2024/INF_2024_12345678900.pdf?sv=2024-08-04&se=...&sp=r&sig=..."
+        expiraEm:
+          type: string
+          format: date-time
+          description: Data e hora de expiração do link (ISO 8601)
+          example: "2026-04-24T15:00:00.000Z"
+
+    ListaDocumentosResponse:
+      type: object
+      properties:
+        sucesso:
+          type: boolean
+          example: true
+        documentos:
+          type: array
+          items:
+            $ref: '#/components/schemas/Documento'
+
+    UploadBoletoRequest:
+      type: object
+      required: [cpf, mes, ano]
+      properties:
+        cpf:
+          type: string
+          description: CPF do colaborador (com ou sem máscara; 11 dígitos numéricos)
+          example: "123.456.789-00"
+        mes:
+          oneOf:
+            - type: string
+            - type: integer
+          description: Mês de referência do boleto (01–12)
+          example: "03"
+        ano:
+          oneOf:
+            - type: string
+            - type: integer
+          description: Ano de referência do boleto (4 dígitos)
+          example: "2025"
+
+    UploadBoletoResponse:
+      type: object
+      properties:
+        sucesso:
+          type: boolean
+          example: true
+        mensagem:
+          type: string
+          example: "Boleto enviado com sucesso."
+        documento:
+          $ref: '#/components/schemas/Documento'
+
+    ErroResponse:
+      type: object
+      properties:
+        sucesso:
+          type: boolean
+          example: false
+        mensagem:
+          type: string
+          example: "Mensagem de erro descritiva."

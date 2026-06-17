@@ -292,3 +292,456 @@ describe('GET /api/documentos/:cpf', () => {
     });
   });
 });
+
+// =============================================================================
+describe('POST /api/documentos/upload', () => {
+
+  // ── Caso de sucesso ──────────────────────────────────────────────────────────
+
+  describe('Sucesso (201)', () => {
+    let app;
+
+    beforeEach(() => {
+      app = criarApp();
+    });
+
+    it('deve retornar 201 com sucesso: true ao receber CPF, mês e ano válidos', async () => {
+      // Arrange
+      const payload = { cpf: '12345678900', mes: 3, ano: 2025 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert
+      expect(res.status).toBe(201);
+      expect(res.body.sucesso).toBe(true);
+      expect(res.body.mensagem).toBe('Boleto enviado com sucesso.');
+    });
+
+    it('deve retornar o objeto documento com todos os campos obrigatórios', async () => {
+      // Arrange
+      const payload = { cpf: '12345678900', mes: 5, ano: 2025 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert
+      const { documento } = res.body;
+      expect(documento).toHaveProperty('id');
+      expect(documento).toHaveProperty('nome');
+      expect(documento).toHaveProperty('descricao');
+      expect(documento).toHaveProperty('tipo');
+      expect(documento).toHaveProperty('url');
+      expect(documento).toHaveProperty('expiraEm');
+    });
+
+    it('deve gerar o nome do arquivo no formato BLT_MM_AAAA_CPF.pdf', async () => {
+      // Arrange
+      const payload = { cpf: '12345678900', mes: 1, ano: 2025 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert
+      expect(res.body.documento.nome).toBe('BLT_01_2025_12345678900.pdf');
+    });
+
+    it('deve gerar descrição no formato "Boleto Plano de Saúde — MM/AAAA"', async () => {
+      // Arrange
+      const payload = { cpf: '12345678900', mes: 7, ano: 2025 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert
+      expect(res.body.documento.descricao).toBe('Boleto Plano de Saúde — 07/2025');
+    });
+
+    it('deve retornar tipo igual a "BOLETO" no documento', async () => {
+      // Arrange
+      const payload = { cpf: '12345678900', mes: 4, ano: 2025 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert
+      expect(res.body.documento.tipo).toBe('BOLETO');
+    });
+
+    it('deve retornar URL com estrutura de SAS token simulado', async () => {
+      // Arrange
+      const payload = { cpf: '12345678900', mes: 6, ano: 2025 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert
+      const { url, expiraEm } = res.body.documento;
+      expect(url).toMatch(/^https:\/\/mrsstoragepoc\.blob\.core\.windows\.net\/documentos-colaboradores/);
+      expect(url).toContain('sv=');
+      expect(url).toContain('se=');
+      expect(url).toContain('sp=r');
+      expect(url).toContain('sig=');
+      expect(new Date(expiraEm).getTime()).toBeGreaterThan(Date.now());
+    });
+
+    it('deve retornar id igual ao UUID mockado', async () => {
+      // Arrange
+      const payload = { cpf: '12345678900', mes: 2, ano: 2025 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert — uuid mockado retorna 'test-uuid-1234-5678-abcd'
+      expect(res.body.documento.id).toBe('test-uuid-1234-5678-abcd');
+    });
+
+    it('deve aceitar CPF com máscara (123.456.789-00) e processar normalmente', async () => {
+      // Arrange — CPF formatado com pontos e traço
+      const payload = { cpf: '123.456.789-00', mes: 8, ano: 2025 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert — limparCpf remove a máscara antes de validar
+      expect(res.status).toBe(201);
+      expect(res.body.sucesso).toBe(true);
+      expect(res.body.documento.nome).toBe('BLT_08_2025_12345678900.pdf');
+    });
+
+    it('deve aceitar mês como string numérica (ex: "9")', async () => {
+      // Arrange
+      const payload = { cpf: '12345678900', mes: '9', ano: 2025 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert — padStart converte "9" → "09"
+      expect(res.status).toBe(201);
+      expect(res.body.documento.nome).toBe('BLT_09_2025_12345678900.pdf');
+    });
+
+    it('deve aceitar mês limite inferior (01)', async () => {
+      // Arrange
+      const payload = { cpf: '12345678900', mes: 1, ano: 2025 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert
+      expect(res.status).toBe(201);
+      expect(res.body.documento.nome).toContain('BLT_01_');
+    });
+
+    it('deve aceitar mês limite superior (12)', async () => {
+      // Arrange
+      const payload = { cpf: '12345678900', mes: 12, ano: 2025 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert
+      expect(res.status).toBe(201);
+      expect(res.body.documento.nome).toContain('BLT_12_');
+    });
+
+    it('deve retornar Content-Type application/json', async () => {
+      // Arrange
+      const payload = { cpf: '12345678900', mes: 3, ano: 2025 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert
+      expect(res.headers['content-type']).toMatch(/application\/json/);
+    });
+  });
+
+  // ── Campos obrigatórios ausentes ────────────────────────────────────────────
+
+  describe('Campos obrigatórios ausentes (400)', () => {
+    let app;
+
+    beforeEach(() => {
+      app = criarApp();
+    });
+
+    it('deve retornar 400 quando o campo "cpf" está ausente', async () => {
+      // Arrange — sem cpf
+      const payload = { mes: 3, ano: 2025 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert
+      expect(res.status).toBe(400);
+      expect(res.body.sucesso).toBe(false);
+      expect(res.body.mensagem).toBe('Os campos "cpf", "mes" e "ano" são obrigatórios.');
+    });
+
+    it('deve retornar 400 quando o campo "mes" está ausente', async () => {
+      // Arrange — sem mes
+      const payload = { cpf: '12345678900', ano: 2025 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert
+      expect(res.status).toBe(400);
+      expect(res.body.sucesso).toBe(false);
+      expect(res.body.mensagem).toBe('Os campos "cpf", "mes" e "ano" são obrigatórios.');
+    });
+
+    it('deve retornar 400 quando o campo "ano" está ausente', async () => {
+      // Arrange — sem ano
+      const payload = { cpf: '12345678900', mes: 3 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert
+      expect(res.status).toBe(400);
+      expect(res.body.sucesso).toBe(false);
+      expect(res.body.mensagem).toBe('Os campos "cpf", "mes" e "ano" são obrigatórios.');
+    });
+
+    it('deve retornar 400 quando o body está completamente vazio', async () => {
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send({});
+
+      // Assert
+      expect(res.status).toBe(400);
+      expect(res.body.sucesso).toBe(false);
+      expect(res.body.mensagem).toBe('Os campos "cpf", "mes" e "ano" são obrigatórios.');
+    });
+  });
+
+  // ── Validação de CPF ────────────────────────────────────────────────────────
+
+  describe('Validação do CPF (400)', () => {
+    let app;
+
+    beforeEach(() => {
+      app = criarApp();
+    });
+
+    it('deve retornar 400 quando CPF tem menos de 11 dígitos', async () => {
+      // Arrange
+      const payload = { cpf: '123456789', mes: 3, ano: 2025 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert
+      expect(res.status).toBe(400);
+      expect(res.body.sucesso).toBe(false);
+      expect(res.body.mensagem).toBe('CPF inválido. Informe um CPF com 11 dígitos numéricos.');
+    });
+
+    it('deve retornar 400 quando CPF tem mais de 11 dígitos', async () => {
+      // Arrange
+      const payload = { cpf: '123456789001', mes: 3, ano: 2025 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert
+      expect(res.status).toBe(400);
+      expect(res.body.sucesso).toBe(false);
+      expect(res.body.mensagem).toBe('CPF inválido. Informe um CPF com 11 dígitos numéricos.');
+    });
+
+    it('deve retornar 400 quando CPF contém letras (sem máscara)', async () => {
+      // Arrange
+      const payload = { cpf: 'ABCDEFGHIJK', mes: 3, ano: 2025 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert
+      expect(res.status).toBe(400);
+      expect(res.body.sucesso).toBe(false);
+      expect(res.body.mensagem).toBe('CPF inválido. Informe um CPF com 11 dígitos numéricos.');
+    });
+
+    it('deve retornar 400 quando CPF é uma string vazia', async () => {
+      // Arrange
+      const payload = { cpf: '', mes: 3, ano: 2025 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert
+      expect(res.status).toBe(400);
+      expect(res.body.sucesso).toBe(false);
+      // String vazia é falsy → cai na validação de campos obrigatórios
+      expect(res.body.mensagem).toMatch(/obrigatórios|inválido/i);
+    });
+  });
+
+  // ── Validação de Mês ────────────────────────────────────────────────────────
+
+  describe('Validação do mês (400)', () => {
+    let app;
+
+    beforeEach(() => {
+      app = criarApp();
+    });
+
+    it('deve retornar 400 quando mês é "0" (abaixo do limite — string truthy)', async () => {
+      // Arrange — usa string '0' pois o número 0 é falsy e cairia na validação
+      // de campos obrigatórios; '0' é truthy e chega à validação de intervalo
+      const payload = { cpf: '12345678900', mes: '0', ano: 2025 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert — padStart('0') → '00' → Number('00') = 0 < 1 → inválido
+      expect(res.status).toBe(400);
+      expect(res.body.sucesso).toBe(false);
+      expect(res.body.mensagem).toBe('Mês inválido. Informe um valor entre 01 e 12.');
+    });
+
+    it('deve retornar 400 quando mês é 13 (acima do limite)', async () => {
+      // Arrange
+      const payload = { cpf: '12345678900', mes: 13, ano: 2025 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert
+      expect(res.status).toBe(400);
+      expect(res.body.sucesso).toBe(false);
+      expect(res.body.mensagem).toBe('Mês inválido. Informe um valor entre 01 e 12.');
+    });
+
+    it('deve retornar 400 quando mês é uma string não numérica', async () => {
+      // Arrange
+      const payload = { cpf: '12345678900', mes: 'janeiro', ano: 2025 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert
+      expect(res.status).toBe(400);
+      expect(res.body.sucesso).toBe(false);
+      expect(res.body.mensagem).toBe('Mês inválido. Informe um valor entre 01 e 12.');
+    });
+  });
+
+  // ── Validação de Ano ────────────────────────────────────────────────────────
+
+  describe('Validação do ano (400)', () => {
+    let app;
+
+    beforeEach(() => {
+      app = criarApp();
+    });
+
+    it('deve retornar 400 quando ano tem menos de 4 dígitos', async () => {
+      // Arrange
+      const payload = { cpf: '12345678900', mes: 3, ano: 25 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert
+      expect(res.status).toBe(400);
+      expect(res.body.sucesso).toBe(false);
+      expect(res.body.mensagem).toBe('Ano inválido. Informe um ano com 4 dígitos.');
+    });
+
+    it('deve retornar 400 quando ano tem mais de 4 dígitos', async () => {
+      // Arrange
+      const payload = { cpf: '12345678900', mes: 3, ano: 20250 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert
+      expect(res.status).toBe(400);
+      expect(res.body.sucesso).toBe(false);
+      expect(res.body.mensagem).toBe('Ano inválido. Informe um ano com 4 dígitos.');
+    });
+
+    it('deve retornar 400 quando ano contém letras', async () => {
+      // Arrange
+      const payload = { cpf: '12345678900', mes: 3, ano: 'abcd' };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert
+      expect(res.status).toBe(400);
+      expect(res.body.sucesso).toBe(false);
+      expect(res.body.mensagem).toBe('Ano inválido. Informe um ano com 4 dígitos.');
+    });
+
+    it('deve retornar 400 quando ano tem 3 dígitos', async () => {
+      // Arrange
+      const payload = { cpf: '12345678900', mes: 3, ano: 202 };
+
+      // Act
+      const res = await request(app)
+        .post('/api/documentos/upload')
+        .send(payload);
+
+      // Assert
+      expect(res.status).toBe(400);
+      expect(res.body.sucesso).toBe(false);
+      expect(res.body.mensagem).toBe('Ano inválido. Informe um ano com 4 dígitos.');
+    });
+  });
+});

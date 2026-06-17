@@ -14,9 +14,12 @@ mrs-doc-consulta/
 │   ├── data/
 │   │   ├── colaboradores.js   # 5 colaboradores fictícios
 │   │   └── documentos.js      # Catálogo de documentos por CPF
+│   ├── docs/
+│   │   └── openapi.yaml       # Documentação OpenAPI 3.0 (Swagger)
 │   ├── routes/
 │   │   ├── validar.js         # POST /api/validar-colaborador
 │   │   └── documentos.js      # GET  /api/documentos/:cpf
+│   │                          # POST /api/documentos/upload
 │   ├── storage/               # Simulação do Azure Blob Storage
 │   │   ├── IR/2024/
 │   │   ├── IR/2025/
@@ -78,6 +81,11 @@ Aplicação disponível em: **http://localhost:5173**
 
 ## API
 
+> 📄 A documentação completa no formato **OpenAPI 3.0** está em [`backend/docs/openapi.yaml`](backend/docs/openapi.yaml).
+> Você pode visualizá-la no [Swagger Editor](https://editor.swagger.io/) ou no [Swagger UI](https://swagger.io/tools/swagger-ui/).
+
+---
+
 ### `POST /api/validar-colaborador`
 
 Valida o colaborador contra os dados mockados.
@@ -136,6 +144,63 @@ Retorna os documentos disponíveis com links temporários (SAS token simulado).
   ]
 }
 ```
+
+**Erros:**
+| HTTP | Mensagem |
+|------|----------|
+| 400  | `Parâmetro "tipo" inválido. Use IR ou BOLETO.` |
+| 404  | `Documento não localizado para o CPF informado.` |
+| 404  | `Documento não localizado.` |
+
+---
+
+### `POST /api/documentos/upload` ⭐ novo
+
+Simula o **upload de um novo boleto** do plano de saúde para o colaborador informado.
+O registro é mantido em memória (não persiste em disco) e uma URL com SAS token simulado
+é retornada com validade de **1 hora**.
+
+**Body:**
+```json
+{
+  "cpf": "123.456.789-00",
+  "mes": "03",
+  "ano": "2025"
+}
+```
+
+| Campo | Tipo   | Obrigatório | Validação |
+|-------|--------|-------------|-----------|
+| `cpf` | string | ✅ | 11 dígitos numéricos (máscara aceita e removida automaticamente) |
+| `mes` | string | ✅ | Valor entre `01` e `12` |
+| `ano` | string | ✅ | Exatamente 4 dígitos numéricos |
+
+**Nome do arquivo gerado:** `BLT_MM_AAAA_CPF.pdf`
+> Exemplo: `BLT_03_2025_12345678900.pdf`
+
+**Resposta (sucesso — HTTP 201):**
+```json
+{
+  "sucesso": true,
+  "mensagem": "Boleto enviado com sucesso.",
+  "documento": {
+    "id": "d4e5f6a7-b8c9-0123-def0-234567890123",
+    "nome": "BLT_03_2025_12345678900.pdf",
+    "descricao": "Boleto Plano de Saúde — 03/2025",
+    "tipo": "BOLETO",
+    "url": "https://mrsstoragepoc.blob.core.windows.net/documentos-colaboradores/BOLETOS/2025/03/BLT_03_2025_12345678900.pdf?sv=2024-08-04&se=...&sp=r&sig=...",
+    "expiraEm": "2026-01-01T14:00:00.000Z"
+  }
+}
+```
+
+**Erros:**
+| HTTP | Cenário | Mensagem |
+|------|---------|----------|
+| 400  | Campo ausente | `Os campos "cpf", "mes" e "ano" são obrigatórios.` |
+| 400  | CPF inválido | `CPF inválido. Informe um CPF com 11 dígitos numéricos.` |
+| 400  | Mês inválido | `Mês inválido. Informe um valor entre 01 e 12.` |
+| 400  | Ano inválido | `Ano inválido. Informe um ano com 4 dígitos.` |
 
 ---
 
